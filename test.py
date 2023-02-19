@@ -9,9 +9,9 @@ import requests
 
 import data_load as dl
 
+settings = dl.read_yaml_config('config.yaml', section='telegram')
 
-
-token = '5859091834:AAG5E0DoKe366ga67vEfD0HrJUcpw-svudQ'
+token = settings['token']
 bot = telebot.TeleBot(token)
 
 @bot.message_handler(commands=["start"])
