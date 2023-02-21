@@ -12,6 +12,9 @@ import psycopg2 as ps
 import data_load as dl
 
 settings = dl.read_yaml_config('config.yaml', section='telegram')
+global battle1
+global battle2
+global book_dct 
 
 book_list = [
     'Мастер и Маргарита',
@@ -106,7 +109,6 @@ def data_frame_to_png(df, file_name):
 
 # start_rating = 1600
 # ratings = np.ones(len(book_list)) * start_rating
-global book_dct 
 # book_dct = dict(zip(book_list, ratings))
 
 
@@ -148,7 +150,7 @@ def new_game(message):
         reply_markup=markup
                 )
     
-def show_ratings(message):
+def show_ratings(message, book_dct):
     markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup = make_button('Main menu', markup)
     
@@ -175,6 +177,7 @@ def show_pair_results(message):
 def handle_text(message):
     global battle1
     global battle2
+    global book_dct
 
     rating_df = dl.get_data("""
                 with 
@@ -192,41 +195,22 @@ def handle_text(message):
     if message.text.strip() == 'New game':
         new_game(message)
     elif message.text.strip() == 'Show all ratings':
-        show_ratings(message)
+        show_ratings(message, book_dct)
     elif message.text.strip() == 'Main menu':
         start_menu(message)
     elif message.text.strip() == 'Continue':
         new_game(message)
     elif message.text.strip() == battle1:
         result = 0
-        global book_dct 
-        book_dct = dict(zip(rating_df['item'].values, rating_df['rating'].values))
-        book_dct = get_battle_results(battle1, battle2, result, book_dct)
-        rating_df = get_df_from_dict(book_dct)
-        dl.insert_data(rating_df, 'tl', 'rating_history')
-    
-        markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup = make_button('Continue', markup)
-        markup = make_button('Show all ratings', markup)
-        markup = make_button('Main menu', markup)
-        
-        bot.send_message(
-            message.chat.id, 
-            ("""
-            Good choice!
-            New ratings:
-            """ + battle1 + ' ' + str(book_dct[battle1]) + '\n'
-                + battle2 + ' ' + str(book_dct[battle2]) + '\n')
-            ,
-            reply_markup=markup
-                    )
     elif message.text.strip() == battle2:
         result = 1
+    if result >= 0:
         book_dct = dict(zip(rating_df['item'].values, rating_df['rating'].values))
         book_dct = get_battle_results(battle1, battle2, result, book_dct)
         rating_df = get_df_from_dict(book_dct)
-        dl.insert_data(rating_df, 'tl', 'rating_history')
-    
+        to_base_df = rating_df[rating_df['item'].isin([battle1, battle2])]
+        dl.insert_data(to_base_df, 'tl', 'rating_history')
+
         markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup = make_button('Continue', markup)
         markup = make_button('Show all ratings', markup)
@@ -242,9 +226,9 @@ def handle_text(message):
             ,
             reply_markup=markup
                     )
-    user = message.from_user.username
-    user_id = message.from_user.id
-    if result >= 0:
+        user = message.from_user.username
+        user_id = message.from_user.id
+
         for_data_load = [battle1, battle2, result, user, user_id]
         r_df = pd.DataFrame([for_data_load], columns=['battle1', 'battle2', 'result', 'user', 'user_id'])
         dl.insert_data(r_df, 'tl', 'game_results')
