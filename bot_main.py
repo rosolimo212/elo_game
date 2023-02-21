@@ -9,19 +9,9 @@ import requests
 import yaml, json, boto3, botocore
 import psycopg2 as ps
 
-yaml_file = 'config.yaml'
+import data_load as dl
 
-def read_yaml_config(yaml_file: str, section: str) -> dict:
-    with open(yaml_file, 'r') as yaml_stream:
-        descriptor = yaml.full_load(yaml_stream)
-        if section in descriptor:
-            configuration = descriptor[section]
-            return configuration
-        else:
-            logging.error(f"Section {section} not find in the file '{yaml_file}'")
-            sys.exit(1)
-
-settings = read_yaml_config(yaml_file, 'telegram_bot')
+settings = dl.read_yaml_config('config.yaml', section='telegram')
 
 book_list = [
     'Мастер и Маргарита',
@@ -114,10 +104,10 @@ def data_frame_to_png(df, file_name):
     plt.savefig(file_name+'.png', bbox_inches='tight')
     
 
-start_rating = 1600
-ratings = np.ones(len(book_list)) * start_rating
+# start_rating = 1600
+# ratings = np.ones(len(book_list)) * start_rating
 global book_dct 
-book_dct = dict(zip(book_list, ratings))
+# book_dct = dict(zip(book_list, ratings))
 
 
 def make_button(button_name, markup):
@@ -185,6 +175,20 @@ def show_pair_results(message):
 def handle_text(message):
     global battle1
     global battle2
+
+    rating_df = dl.get_data("""
+                with 
+                base as 
+                (
+                    select item, rating, insert_time, max(insert_time) over (partition by item) as fresh_time
+                    from tl.rating_history
+                )
+                select item, rating
+                from base
+                where fresh_time = insert_time
+                """)
+
+    result = -1
     if message.text.strip() == 'New game':
         new_game(message)
     elif message.text.strip() == 'Show all ratings':
@@ -196,7 +200,10 @@ def handle_text(message):
     elif message.text.strip() == battle1:
         result = 0
         global book_dct 
+        book_dct = dict(zip(rating_df['item'].values, rating_df['rating'].values))
         book_dct = get_battle_results(battle1, battle2, result, book_dct)
+        rating_df = get_df_from_dict(book_dct)
+        dl.insert_data(rating_df, 'tl', 'rating_history')
     
         markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup = make_button('Continue', markup)
@@ -215,7 +222,10 @@ def handle_text(message):
                     )
     elif message.text.strip() == battle2:
         result = 1
+        book_dct = dict(zip(rating_df['item'].values, rating_df['rating'].values))
         book_dct = get_battle_results(battle1, battle2, result, book_dct)
+        rating_df = get_df_from_dict(book_dct)
+        dl.insert_data(rating_df, 'tl', 'rating_history')
     
         markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup = make_button('Continue', markup)
@@ -232,5 +242,13 @@ def handle_text(message):
             ,
             reply_markup=markup
                     )
+    user = message.from_user.username
+    user_id = message.from_user.id
+    if result >= 0:
+        for_data_load = [battle1, battle2, result, user, user_id]
+        r_df = pd.DataFrame([for_data_load], columns=['battle1', 'battle2', 'result', 'user', 'user_id'])
+        dl.insert_data(r_df, 'tl', 'game_results')
         
 bot.polling(none_stop=True, interval=0)
+
+
