@@ -4,10 +4,6 @@ import random
 
 import telebot
 from telebot import types
-import requests
-
-import yaml, json, boto3, botocore
-import psycopg2 as ps
 
 import data_load as dl
 
@@ -16,18 +12,23 @@ global battle1
 global battle2
 global book_dct 
 
-book_list = [
-    'Мастер и Маргарита',
-    'Преступление и наказание',
-    'Ромео и Джульета',
-    'Незнайка на Луне',
-    'Гарри Поттер и философский камень',
-    'Властелин Колец',
-    'Айвенго',
-    'Вокруг света за 80 дней',
-    'Три повести о Малыше и Карлсоне',
-    'Дядя Фёдор, пёс и кот',
-]
+book_list = dl.get_data("""
+            select distinct item
+            from tl.rating_history
+""")['item'].values
+
+# book_list = [
+#     'Мастер и Маргарита',
+#     'Преступление и наказание',
+#     'Ромео и Джульета',
+#     'Незнайка на Луне',
+#     'Гарри Поттер и философский камень',
+#     'Властелин Колец',
+#     'Айвенго',
+#     'Вокруг света за 80 дней',
+#     'Три повести о Малыше и Карлсоне',
+#     'Дядя Фёдор, пёс и кот',
+# ]
 
 
 # return classic Elo propabilities
@@ -233,6 +234,7 @@ def handle_text(message):
         r_df = pd.DataFrame([for_data_load], columns=['battle1', 'battle2', 'result', 'user', 'user_id'])
         dl.insert_data(r_df, 'tl', 'game_results')
         
+print('Start')
 bot.polling(none_stop=True, interval=0)
 
 
