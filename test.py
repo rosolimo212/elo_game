@@ -11,6 +11,31 @@ import data_load as dl
 
 settings = dl.read_yaml_config('config.yaml', section='telegram')
 
+l = dl.get_data("""
+                with 
+                base as 
+                (
+                    select item, rating, insert_time, max(insert_time) over (partition by item) as fresh_time
+                    from tl.rating_history
+                )
+                select item, rating
+                from base
+                where fresh_time = insert_time
+                order by rating desc
+""")
+                
+l = dl.get_data("""
+
+    select distinct user--, avg(result)
+    from tl.game_results
+    --where user='vladchernichenko'
+    --group by user
+
+
+""")
+
+print(l)
+
 token = settings['token']
 bot = telebot.TeleBot(token)
 
@@ -32,4 +57,6 @@ def handle_text(message):
     bot.send_message(message.chat.id, output)
 
 
-bot.polling(none_stop=True, interval=0)
+# bot.polling(none_stop=True, interval=0)
+
+

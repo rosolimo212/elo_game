@@ -1,36 +1,16 @@
+# coding: utf-8
+# ELO-bot main file
+import telebot
+from telebot import types
+
 import pandas as pd
 import numpy as np
 import random
 
-import telebot
-from telebot import types
-
+# module for working with SQL
 import data_load as dl
 
-settings = dl.read_yaml_config('config.yaml', section='telegram')
-global battle1
-global battle2
-global book_dct 
-
-book_list = dl.get_data("""
-            select distinct item
-            from tl.rating_history
-""")['item'].values
-
-# book_list = [
-#     'Мастер и Маргарита',
-#     'Преступление и наказание',
-#     'Ромео и Джульета',
-#     'Незнайка на Луне',
-#     'Гарри Поттер и философский камень',
-#     'Властелин Колец',
-#     'Айвенго',
-#     'Вокруг света за 80 дней',
-#     'Три повести о Малыше и Карлсоне',
-#     'Дядя Фёдор, пёс и кот',
-# ]
-
-
+# battle logic functions
 # return classic Elo propabilities
 # elo_prob(2882, 2722) -> 0.7152 (72% chanses Carlsen (2882) to beat Wan Hao (2722))
 def elo_prob(rw, rb):
@@ -43,13 +23,14 @@ def elo_prob(rw, rb):
     return res
 
 # rating changing after game
-# elo_rating_changes(1600, 1200, 0.5)
+# simple version
 def elo_rating_changes(rating, opponent_rating, score):
     K = 20  
     expectation=elo_prob(rating, opponent_rating)
     new_rating=rating+K*(score-expectation)
     return np.round(new_rating,0)
 
+# return list of pair different items wihouhgt history
 def generate_pair(book_list):
     battle1 = random.choice(book_list)
     battle2 = random.choice(book_list)
@@ -58,9 +39,11 @@ def generate_pair(book_list):
     else:
         return generate_pair(book_list)
 
+# random result for tests
 def generate_result():
     return random.choice([0,1])
 
+# battle results and rating changings in main dict
 def get_battle_results(battle1, battle2, result, book_dct):
     if result == 0:
         print(battle1, 'won')
@@ -78,8 +61,8 @@ def get_battle_results(battle1, battle2, result, book_dct):
     
     return book_dct
 
+
 def get_df_from_dict(book_dct):
-    import pandas as pd
     df = pd.DataFrame.from_dict(book_dct, orient='index').reset_index()
     df.columns = ['item', 'rating']
     df['rating'] = df['rating'].astype('int')
@@ -112,27 +95,13 @@ def data_frame_to_png(df, file_name):
 # ratings = np.ones(len(book_list)) * start_rating
 # book_dct = dict(zip(book_list, ratings))
 
-
+# telegram bot logic
 def make_button(button_name, markup):
     item=types.KeyboardButton(button_name)
     markup.add(item)
     
     return markup 
 
-bot = telebot.TeleBot(settings['token'])
-@bot.message_handler(commands=["start"])
-def start_menu(message):
-    markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup = make_button('New game', markup)
-    markup = make_button('Show all ratings', markup)
-    
-    bot.send_message(
-        message.chat.id, 
-        """
-        Hi! Lets' play a game?
-        """,
-        reply_markup=markup
-                )
 def new_game(message):
     global battle1
     global battle2
@@ -170,6 +139,34 @@ def show_pair_results(message):
         message.chat.id, 
         """
         Results will by soon
+        """,
+        reply_markup=markup
+                )
+    
+
+settings = dl.read_yaml_config('config.yaml', section='telegram')
+
+global battle1
+global battle2
+global book_dct 
+
+book_list = dl.get_data("""
+            select distinct item
+            from tl.rating_history
+""")['item'].values
+
+
+bot = telebot.TeleBot(settings['token'])
+@bot.message_handler(commands=["start"])
+def start_menu(message):
+    markup=types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = make_button('New game', markup)
+    markup = make_button('Show all ratings', markup)
+    
+    bot.send_message(
+        message.chat.id, 
+        """
+        Hi! Lets' play a game?
         """,
         reply_markup=markup
                 )
