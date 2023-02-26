@@ -123,10 +123,10 @@ def make_ratings(battle1, battle2, result):
             select item, rating, insert_time
             from tl.rating_history
 
-            union all 
+            --union all 
 
-            select item_name as item, start_rating as rating, insert_time
-            from tl.items
+            --select item_name as item, start_rating as rating, insert_time
+            --from tl.items
         ),
         fresh_note as
         (
@@ -177,7 +177,7 @@ def choise_category(bot, message):
     bot.send_message(
             message.chat.id, 
             """
-            Выберете категорию
+            Выберите категорию
             """,
             reply_markup=markup
                     )
@@ -202,7 +202,7 @@ def start_game(bot, message, topic):
     bot.send_message(
             message.chat.id, 
             """
-            Выберете то, что вам нравится больше
+            Выберите то, что вам нравится больше
             """,
             reply_markup=markup
                     )
@@ -736,7 +736,7 @@ def launch_main_menu(message):
         """,
         reply_markup=markup
                 )
-    sending_alive_message(60 * 30)
+    # sending_alive_message(60 * 30)
 
 @bot.message_handler(content_types=["text"])
 def handle_text(message):
@@ -797,7 +797,10 @@ def handle_text(message):
     elif message.text.strip() in ['Пропустить']:
         skip_game(bot, message)
     else:
-        launch_404(bot, message)
+        try:
+            launch_404(bot, message)
+        except:
+            bot.send_message(chat_id=249792088, text="Опять какая-то хрень")
 
 
 
