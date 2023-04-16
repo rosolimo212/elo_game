@@ -62,8 +62,6 @@ def sending_alive_message(period_in_seconds):
         bot.send_message(chat_id=249792088, text="Bot is stiil alive!")
         time.sleep(period_in_seconds)
 
-
-
 # loggin functions
 # event log
 def make_event_log(message, event_name, params):
@@ -116,28 +114,12 @@ def count_elo_rating_changes(rating, opponent_rating, score):
     return np.round(new_rating,0)
 
 def make_ratings(battle1, battle2, result):
-    fresh_ratings_df = dl.get_data("""
-        with 
-        base as 
-        (
-            select item, rating, insert_time
-            from tl.rating_history
+    with open('make_rating.sql', 'r') as f:
+        query = f.read()
 
-            --union all 
+    fresh_ratings_df =  dl.get_data(query)
+    print(fresh_ratings_df[0:3])
 
-            --select item_name as item, start_rating as rating, insert_time
-            --from tl.items
-        ),
-        fresh_note as
-        (
-            select *, max(insert_time) over (partition by item) as fresh_time
-            from base
-        )
-
-        select item, rating
-        from fresh_note
-        where fresh_time = insert_time
-                                """)
     old_rating1 = fresh_ratings_df[fresh_ratings_df['item'] == battle1]['rating'].values[0]
     old_rating2 = fresh_ratings_df[fresh_ratings_df['item'] == battle2]['rating'].values[0]
 
@@ -157,8 +139,6 @@ def make_ratings(battle1, battle2, result):
     log_df.columns = ['item', 'rating']
     print(log_df)
     dl.insert_data(log_df, 'tl', 'rating_history')
-
-
 
 # telegram bot logic
 def make_answer_buttons(buttons_lst):
@@ -224,7 +204,6 @@ def skip_game(bot, message):
             reply_markup=markup
                     )
     
-    
 def finish_game(bot, message, battle1, battle2, result):
     make_ratings(battle1, battle2, result)
     make_battle_log(message, battle1, battle2, result)
@@ -243,25 +222,11 @@ def finish_game(bot, message, battle1, battle2, result):
             reply_markup=markup
                     )
 
-
-
-
 def launch_ratings(bot, message):
-    top_rating = dl.get_data("""
-                with 
-                base as 
-                (
-                    select item, rating, insert_time, max(insert_time) over (partition by item) as fresh_time
-                    from tl.rating_history
-                )
+    with open('top_rating.sql', 'r') as f:
+        query = f.read()
+    top_rating = dl.get_data(query)
 
-                select item, rating
-                from base
-                where fresh_time = insert_time
-                order by rating desc
-
-                limit 10
-                """)
     rcParams['figure.figsize'] = 12, 9
     fig = plt.figure()
     fig = sns.heatmap(
@@ -275,8 +240,6 @@ def launch_ratings(bot, message):
             square=True,
             ).figure.savefig("hm.png")
     
-
-
     markup = make_answer_buttons([
          'Главное меню',
                                 ])
@@ -297,219 +260,14 @@ def launch_personal_stat(bot, message):
     user = message.from_user.username
     user_id = message.from_user.id
 
-    score =  dl.get_data("""
-                    with
-                    random_rate_old as 
-                    (
-                        select 
-                        user_id, avg(result) as random_value, count(distinct insert_time) as attempts
-                        from tl.game_results
-                        group by user_id
-                    ), 
-                    left_tbl as 
-                    (
-                        select battle1 as item, user_id, "user"
-                            , case 
-                                when result = 0 then 1
-                                else 0
-                            end as is_selected
-                                --, row_number() as id
-                        from tl.game_results
-                    ),
-                    right_tbl as 
-                    (
-                            select battle2 as item, user_id, "user"
-                                        , case 
-                                            when result = 1 then 1
-                                            else 0
-                                        end as is_selected
-                        from tl.game_results
-                    ),
-                    pre_items as 
-                    (
-                        select * from left_tbl
-
-                        union all
-
-                        select * from right_tbl
-                    ),
-                    items as 
-                    (
-                        select *, row_number() over() as id
-                        from pre_items
-                    ),
-                    global_stat as 
-                    (
-                        select item
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item
-                    ),
-                    personal_stat as 
-                    (
-                        select item, user_id, "user"
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item, user_id, "user"
-                    ),
-                    indiv_stat as 
-                    (
-                        select ps.*
-                                , gs.select_rate as global_select_rate
-                                , case 
-                                    when (ps.select_rate <= 0.05) or (ps.select_rate >= 0.95) then 0
-                                    else  round((100 * abs(gs.select_rate - ps.select_rate))::decimal, 0)
-                                end as original_score
-                        from personal_stat ps
-                        left outer join global_stat gs on 
-                            (ps.item=gs.item)
-                    ),
-                    original as 
-                    (
-                        select user_id, "user"
-                                , avg(original_score) as original_score, sum(total) / 2 as attemps
-                        from  indiv_stat
-                        group by user_id, "user"
-                    ),
-                    random_rate as 
-                    (
-                        select user_id, "user"
-                                , stddev_pop(select_rate)
-                                ,  case 
-                                    when stddev_pop(select_rate) <= 0.1 then 0
-                                    when stddev_pop(select_rate) >= 0.9 then 100
-                                    else round((100*(stddev_pop(select_rate)))::decimal,0)
-                                end as non_random_rate
-                        from personal_stat
-                        group by user_id, "user"
-                    )
-
-
-                    select 
-                            o."user"
-                            , round(((o.attemps * o.original_score) + (o.attemps * (50 - non_random_rate))) / 100,1) as score
-                            , round(o.attemps,0) as attemps 
-                            , round(o.original_score,0) as original_score
-                            , non_random_rate
-                    from original o
-                    left outer join random_rate rr on
-                        (rr.user_id = o.user_id)
-                    where o.user_id = {uid}
-
-                    
-
-
-                    """.format(
+    with open('score.sql', 'r') as f:
+        query = f.read()
+    score =  dl.get_data(query.format(
                         uid = user_id
                     ))
-    favor =  dl.get_data("""
-                    with
-                    random_rate_old as 
-                    (
-                        select 
-                        user_id, avg(result) as random_value, count(distinct insert_time) as attempts
-                        from tl.game_results
-                        group by user_id
-                    ), 
-                    left_tbl as 
-                    (
-                        select battle1 as item, user_id, "user"
-                            , case 
-                                when result = 0 then 1
-                                else 0
-                            end as is_selected
-                                --, row_number() as id
-                        from tl.game_results
-                    ),
-                    right_tbl as 
-                    (
-                            select battle2 as item, user_id, "user"
-                                        , case 
-                                            when result = 1 then 1
-                                            else 0
-                                        end as is_selected
-                        from tl.game_results
-                    ),
-                    pre_items as 
-                    (
-                        select * from left_tbl
-
-                        union all
-
-                        select * from right_tbl
-                    ),
-                    items as 
-                    (
-                        select *, row_number() over() as id
-                        from pre_items
-                    ),
-                    global_stat as 
-                    (
-                        select item
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item
-                    ),
-                    personal_stat as 
-                    (
-                        select item, user_id, "user"
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item, user_id, "user"
-                    ),
-                    indiv_stat as 
-                    (
-                        select ps.*
-                                , gs.select_rate as global_select_rate
-                                , case 
-                                    when (ps.select_rate <= 0.05) or (ps.select_rate >= 0.95) then 0
-                                    else  round((100 * abs(gs.select_rate - ps.select_rate))::decimal, 0)
-                                end as original_score
-                        from personal_stat ps
-                        left outer join global_stat gs on 
-                            (ps.item=gs.item)
-                    ),
-                    original as 
-                    (
-                        select user_id, "user"
-                                , sum(original_score) as original_score, round(sum(total) / 2,0) as attemps
-                        from  indiv_stat
-                        group by user_id, "user"
-                    ),
-                    random_rate as 
-                    (
-                        select user_id, "user"
-                                , stddev_pop(select_rate)
-                                ,  case 
-                                    when stddev_pop(select_rate) <= 0.1 then 0
-                                    when stddev_pop(select_rate) >= 0.9 then 100
-                                    else round((100*(stddev_pop(select_rate)))::decimal,0)
-                                end as non_random_rate
-                        from personal_stat
-                        group by user_id, "user"
-                    )
-
-
-                    select *
-                    from indiv_stat
-                    where user_id = {uid} and total > 3
-
-                    order by select_rate desc
-
-                    limit 1
-
-                    
-
-
-                    """.format(
+    with open('favor.sql', 'r') as f:
+        query = f.read()
+    favor =  dl.get_data(query.format(
                         uid = user_id
                     ))
 
@@ -542,115 +300,12 @@ def launch_personal_stat(bot, message):
                     )
        
 def launch_leaderboard(bot, message):
-    lead_df = dl.get_data("""
-                    with
-                    random_rate_old as 
-                    (
-                        select 
-                        user_id, avg(result) as random_value, count(distinct insert_time) as attempts
-                        from tl.game_results
-                        group by user_id
-                    ), 
-                    left_tbl as 
-                    (
-                        select battle1 as item, user_id, "user"
-                            , case 
-                                when result = 0 then 1
-                                else 0
-                            end as is_selected
-                                --, row_number() as id
-                        from tl.game_results
-                    ),
-                    right_tbl as 
-                    (
-                            select battle2 as item, user_id, "user"
-                                        , case 
-                                            when result = 1 then 1
-                                            else 0
-                                        end as is_selected
-                        from tl.game_results
-                    ),
-                    pre_items as 
-                    (
-                        select * from left_tbl
+    with open('leaderboard.sql', 'r') as f:
+        query = f.read()
 
-                        union all
-
-                        select * from right_tbl
-                    ),
-                    items as 
-                    (
-                        select *, row_number() over() as id
-                        from pre_items
-                    ),
-                    global_stat as 
-                    (
-                        select item
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item
-                    ),
-                    personal_stat as 
-                    (
-                        select item, user_id, "user"
-                                    , sum(is_selected) as selected
-                                    , count(is_selected) as total
-                                    , sum(is_selected)::float / count(is_selected) as select_rate
-                        from items
-                        group by item, user_id, "user"
-                    ),
-                    indiv_stat as 
-                    (
-                        select ps.*
-                                , gs.select_rate as global_select_rate
-                                , case 
-                                    when (ps.select_rate <= 0.05) or (ps.select_rate >= 0.95) then 0
-                                    else  round((100 * abs(gs.select_rate - ps.select_rate))::decimal, 0)
-                                end as original_score
-                        from personal_stat ps
-                        left outer join global_stat gs on 
-                            (ps.item=gs.item)
-                    ),
-                    original as 
-                    (
-                        select user_id, "user"
-                                , avg(original_score) as original_score, sum(total) / 2 as attemps
-                        from  indiv_stat
-                        group by user_id, "user"
-                    ),
-                    random_rate as 
-                    (
-                        select user_id, "user"
-                                , stddev_pop(select_rate)
-                                ,  case 
-                                    when stddev_pop(select_rate) <= 0.1 then 0
-                                    when stddev_pop(select_rate) >= 0.9 then 100
-                                    else round((100*(stddev_pop(select_rate)))::decimal,0)
-                                end as non_random_rate
-                        from personal_stat
-                        group by user_id, "user"
-                    )
-
-
-                    select 
-                            o."user"
-                            , round(((o.attemps * o.original_score) + (o.attemps * (50 - non_random_rate))) / 100,1) as score
-                            , round(o.attemps,0) as attemps 
-                            , round(o.original_score,0) as original_score
-                            , non_random_rate
-                    from original o
-                    left outer join random_rate rr on
-                        (rr.user_id = o.user_id)
-                    order by 2 desc
-
-                    limit 10
-
-
-                    """)
+    lead_df = dl.get_data(query)
     lead_df.columns = ['Игрок', 'Счёт', 'Всего игр', 'Мера оригинальности', 'Мера неслучайности']
-    print(lead_df)
+
     for col in lead_df.columns[1:]:
         lead_df[col] = lead_df[col].astype('int')
 
@@ -694,9 +349,6 @@ def launch_404(bot, message):
          'Главное меню',
                                 ])
 
-
-
-
     bot.send_message(
             message.chat.id, 
             """
@@ -708,12 +360,6 @@ def launch_404(bot, message):
             """,
             reply_markup=markup
                     )
-
-
-
-
-
-
 
 @bot.message_handler(commands=["start"])
 def launch_main_menu(message):
@@ -792,7 +438,8 @@ def handle_text(message):
             else:
                 result = -1
             finish_game(bot, message, battle1, battle2, result)
-        except:
+        except Exception as e:
+            print(str(e))
             launch_404(bot, message)
     elif message.text.strip() in ['Пропустить']:
         skip_game(bot, message)
@@ -802,12 +449,4 @@ def handle_text(message):
         except:
             bot.send_message(chat_id=249792088, text="Опять какая-то хрень")
 
-
-
-
-print('Ready for launch')
 bot.polling(none_stop=True, interval=0)
-
-
-
-
