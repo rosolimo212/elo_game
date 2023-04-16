@@ -100,3 +100,4 @@ def insert_data(df_to_sql, schema, table_name):
                             index=False
                         )
     print(str(len(df_to_sql))+' rows inserted to  '+table_name)
+
